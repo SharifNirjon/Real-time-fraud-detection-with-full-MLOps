@@ -417,7 +417,7 @@
     }
   },
   "training": {
-    "seconds": 261.8638038635254,
+    "seconds": 266.50041365623474,
     "n_features": 222,
     "lightgbm": {
       "weighting": {
@@ -442,7 +442,7 @@
         "best_iteration": 1472
       },
       "optuna_trials": 2,
-      "optuna_seconds": 38.59461212158203,
+      "optuna_seconds": 39.80722737312317,
       "best_params": {
         "objective": "binary",
         "metric": "average_precision",
@@ -464,9 +464,9 @@
       }
     },
     "latency_ms": {
-      "p50": 50.002346500036765,
-      "p95": 60.70262639993867,
-      "p99": 68.898475020153
+      "p50": 49.9558659998911,
+      "p95": 65.91670999994221,
+      "p99": 70.20623391014396
     },
     "sample": true
   },
