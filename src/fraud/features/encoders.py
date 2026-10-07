@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import KFold
 
 NAN_KEY = "__nan__"
 
@@ -66,6 +65,8 @@ class TargetEncoder:
     def fit_transform(self, df: pd.DataFrame, y: pd.Series, cols: list[str]) -> pd.DataFrame:
         y = pd.Series(np.asarray(y, dtype=float), index=df.index)
         self.prior = float(y.mean())
+        from sklearn.model_selection import KFold  # lazy: not needed at serving time
+
         out = {}
         kf = KFold(self.n_splits, shuffle=True, random_state=self.seed)
         for c in cols:

@@ -35,6 +35,7 @@ train:
   num_boost_round: 3000
   early_stopping_rounds: 100
   learning_rate: 0.05
+  search_learning_rate: 0.1 # Optuna trials run faster; the winner is refit at learning_rate
   shap_sample: 5000
 
 serve:
