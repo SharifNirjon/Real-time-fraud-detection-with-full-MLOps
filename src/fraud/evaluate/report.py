@@ -173,7 +173,11 @@ def main() -> None:
     scores = pd.read_parquet(path("artifacts_dir") / "scores.parquet")
     models = [c for c in DISPLAY if c in scores.columns]
     res = evaluate_all(scores, models, CostParams.from_config(load_config()))
-    write_reports(res)
+    existing = path("reports_dir") / "metrics.json"
+    keep = {}
+    if existing.exists():  # keep the training section written by fraud.train.train
+        keep = {k: v for k, v in json.loads(existing.read_text()).items() if k == "training"}
+    write_reports(res, keep)
     print((path("reports_dir") / "results.md").read_text())
 
 

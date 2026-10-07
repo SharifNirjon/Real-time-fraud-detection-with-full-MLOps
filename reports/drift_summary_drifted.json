@@ -1,5 +1,5 @@
 {
-  "generated_at": "20261007T045451",
+  "generated_at": "20261007T044757",
   "reference_model_version": "1",
   "status": "ok",
   "current_rows": 5000,
@@ -61,7 +61,7 @@
     "column_drift": 0.1
   },
   "reference_test_pr_auc": 0.542672681910407,
-  "report_html": "reports/drift/drift_report_20261007T045451.html",
+  "report_html": "reports/drift/drift_report_20261007T044757.html",
   "labelled_rows": 10000,
   "live_frauds": 394,
   "live_pr_auc": 0.49702313095053374,

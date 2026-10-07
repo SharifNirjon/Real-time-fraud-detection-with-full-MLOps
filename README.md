@@ -91,7 +91,7 @@ The whole live stream was replayed through the deployed API: 44,292 transactions
 
 ### Latency
 
-Measured with `scripts/benchmark_latency.py`: 2,000 real live transactions against the dockerised API (1 uvicorn worker, 4-core sandbox). Source: [`reports/latency_benchmark.json`](reports/latency_benchmark.json).
+Measured with `scripts/benchmark_latency.py`: 2,000 real live transactions against the dockerised API (1 uvicorn worker, 4-core sandbox). Source: [`reports/latency.json`](reports/latency.json).
 
 | Concurrent clients | Throughput | Client p50 | Client p95 | Client p99 | Server p95 (scoring only) |
 |---:|---:|---:|---:|---:|---:|
@@ -103,25 +103,48 @@ The p95 < 50 ms target is met for a single stream. The process scores on one thr
 
 ## Drift demo (real run)
 
-The same 44,292 live transactions were replayed twice, with labels revealed 48 simulated hours after each transaction:
+The same 44,292 live transactions (2018-05-15 .. 2018-05-31) were replayed three times through the dockerised API, with labels revealed 48 simulated hours after each transaction:
 
-| | Normal replay | `--drift` replay (amount ×2.5, 60% of devices replaced by new models) |
+| | 1. Normal replay (v1) | 2. `--drift` replay (v1) | 3. `--drift` replay after promotion (v2) |
+|---|---:|---:|---:|
+| Share of monitored features drifted (Evidently, Wasserstein ≥ 0.1) | 19% (5 of 26) | **35% (9 of 26)** | 12% (3 of 26) |
+| Prediction drift (Wasserstein, normed) | 0.057 | **0.147** | 0.021 |
+| Drift detected (≥30% of features drifted, or prediction drift ≥ 0.10) | no | **yes → retraining** | no |
+| Reviews / blocks (same 44,292 transactions) | 7,179 / 629 | 10,710 / 675 | 4,006 / 994 |
+| Live PR-AUC, most recent 10k labelled rows | 0.553 | 0.497 | 0.666 * |
+
+\* For replay 3, those 10k rows all fall inside v2's fresh holdout, so the number is out-of-sample. Replay 3's earlier rows were in v2's training pool, so its decision counts are not a clean comparison.
+
+What happened, in order (all from logs; see the Grafana screenshot below):
+1. **Normal replay.** 5 features drift naturally (`TransactionAmt`, `log_amt`, `hour`, `card1_amt_7d`, `V188`), because the reference is April and live traffic is late May. This stays under the 30% threshold.
+2. **Drifted replay.** The **scheduled Prefect `drift-monitor`** (every 5 minutes) flagged 9 features, including `DeviceInfo_freq`, `DeviceType_map`, `DeviceInfo_te` and `uid_device_is_new`, plus prediction drift. Once enough delayed labels had arrived, it **triggered `retrain-champion-challenger` on its own**. Reviews rose 49% on the same transactions: drift costs money even before labels confirm it.
+3. **Challenger v2 was evaluated on a fresh holdout** (the most recent 11,639 labelled transactions, 449 frauds; v2 never trained on them) and **promoted automatically**:
+
+| Fresh holdout (2018-05-25 .. 2018-05-29, drifted traffic) | Champion v1 | Challenger v2 |
 |---|---:|---:|
-| Share of monitored features drifted (Evidently, Wasserstein ≥ 0.1) | 19% (5 of 26) | **35% (9 of 26)** |
-| Prediction drift (Wasserstein, normed) | 0.057 | **0.147** |
-| Drift detected (threshold: ≥30% of features or prediction drift ≥ 0.10) | no | **yes** |
-| Mean fraud score (reference 0.034) | – | 0.051 |
-| Reviews (same transactions) | 7,179 | 10,710 (+49%) |
-| Live PR-AUC on the most recent 10k labelled rows | 0.553 | 0.497 |
-| Live PR-AUC on all 38,796 labelled rows | 0.553 | 0.501 |
+| PR-AUC | 0.488 | **0.670** |
+| ROC-AUC | 0.883 | 0.947 |
+| Recall @1% FPR | 0.412 | 0.599 |
+| Precision @80% recall | 0.123 | 0.295 |
+| Expected cost (each model's own thresholds) | $53,722 | $42,177 |
+| p95 model latency | – | 3.7 ms (budget 50 ms) |
 
-Notes:
-- **Normal replay.** Even without injected drift, 5 features drift naturally (`TransactionAmt`, `log_amt`, `hour`, `card1_amt_7d`, `V188`), because the reference is April and live traffic is late May. This stays under the threshold.
-- **Drifted replay.** The drift was caught by the **scheduled Prefect monitor** (every 5 minutes) on its own. It also flagged `DeviceInfo_freq`, `DeviceType_map`, `DeviceInfo_te` and `uid_device_is_new`, and triggered retraining automatically.
+   Gate decision: `PROMOTED: PR-AUC gain +0.1819 >= +0.0050, latency p95 3.7ms within budget`. MLflow aliases became `champion → v2`, `previous-champion → v1`, and the API answered the hot reload with `{"previous_version":"1","model_version":"2"}`. The run is logged in [`reports/retraining_log.md`](reports/retraining_log.md) and in the MLflow `fraud-retraining` experiment.
+4. **Replay after promotion.** Against the new reference (v2's holdout), drift falls to 12% and prediction drift to 0.021, so no alarm.
 
-RETRAINING_RESULT_PLACEHOLDER
+**Honest attribution of the +0.18 PR-AUC gain.** Most of it is *fresher labels*, not adaptation to the injected drift. The injected drift cost v1 about 0.056 live PR-AUC (0.553 → 0.497), while v2 also trained on two extra months of labelled data. In this dataset, fraud repeats on the same cards and pseudo-users (see the EDA), so recent labels are very predictive. A fair reading: the loop correctly detects drift, waits for labels, and promotes only a challenger that is measurably better on unseen future data.
 
-![Grafana after the drifted replay](docs/img/grafana_drift_traffic.png)
+**Two bugs this demo exposed and that are now fixed:**
+- **Duplicate retrains.** Each 5-minute monitor run started *another* retrain while the first was still training. Fix: a lock file plus a Prefect deployment concurrency limit of 1.
+- **Drift still flagged after promotion.** The monitor compared v1-encoded predictions with a v2 reference built mostly from pre-drift rows, so it still reported 35% drift. Fix: compare only predictions from the reference's model version, and use the challenger's fresh holdout as the new reference. Replay 3 used the fixed code; v2's reference was regenerated from the identical holdout (same start timestamp) without retraining.
+
+![Grafana: three replays, drift flag, automatic promotion v1 → v2](docs/img/grafana_overview.png)
+
+![Evidently report during the drifted replay](docs/img/evidently_drift_report.png)
+
+The three full Evidently reports from these replays are in [`reports/drift_examples/`](reports/drift_examples), with JSON summaries in `reports/drift_summary_{normal,drifted,after_promotion}.json`. The Evidently header uses Evidently's own default dataset-drift rule (50% of columns). The pipeline's own rule (30% of columns or prediction drift ≥ 0.10) is applied in `fraud.monitor.drift`.
+
+
 
 ### Run the demo yourself
 
@@ -140,7 +163,7 @@ make simulate-drift SIMARGS="--batch-size 20"   # about 15 min for 44k transacti
 | Grafana (anonymous viewer) | http://localhost:3000 |
 | MLflow (runs, registry, aliases) | http://localhost:5000 |
 | Prefect (flow runs, schedules) | http://localhost:4200 |
-| Drift reports | `reports/drift/drift_report_*.html` |
+| Drift reports | `reports/drift/drift_report_*.html` (examples from this run: [`reports/drift_examples/`](reports/drift_examples)) |
 
 ## Quickstart
 
@@ -171,7 +194,7 @@ Main Makefile targets: `data train evaluate serve warm simulate simulate-drift m
 - **Velocity (past only):** count and sum of amounts per card1 and per uid over 1 h, 24 h and 7 d; seconds since the previous transaction; per-uid expanding amount mean, std, ratio and z-score; distinct devices and emails per uid; and whether this device or email is new for the uid.
 - **Time and amount:** hour, day of week, log amount, cents part, purchaser/recipient email match.
 - **Categorical:** frequency encoding (12 columns) and smoothed out-of-fold target encoding (8 columns: card, email domains, device, product code).
-- **V-columns** (339 originally): drop those with more than 85% nulls on train, then greedily keep a column only if |Pearson r| < 0.75 with every column already kept (ordered by null rate). 102 are kept. The method and counts are written into the YAML by `python -m fraud.features.select`.
+- **V-columns** (339 originally): drop those with more than 85% nulls on train (none on the full train split; 47 did on the sample), then greedily keep a column only if |Pearson r| < 0.75 with every column already kept (ordered by null rate). 107 are kept. The method and counts are written into the YAML by `python -m fraud.features.select`.
 
 **One module, two execution paths.** `fraud/features/definitions.py` defines the windows, the keys and `derive()`, which turns raw aggregates into features. The offline builder (`history.py`, vectorised with `searchsorted` on per-key prefix sums; all 590k rows take about 11 s) and the Redis store (`online.py`) only produce *raw aggregates*. Both feed the same `derive()` and the same fitted `FeaturePipeline`, and a parity test (`tests/test_features.py::test_offline_online_parity`) streams rows through fakeredis and compares the results.
 
@@ -179,7 +202,7 @@ Main Makefile targets: `data train evaluate serve warm simulate simulate-drift m
 - `POST /score` returns `{fraud_probability, decision, reason_codes, model_version, latency_ms}`. Also available: `POST /score/batch` (processed in time order), `POST /labels` (delayed ground truth), `GET /health`, `GET /metadata`, `GET /metrics`, and `POST /admin/reload` (requires the `X-API-Key` header, compared in constant time with `ADMIN_API_KEY`).
 - **Input contract:** a Pydantic schema generated from the feature config, with required core fields and range checks. Invalid input gets a 422 listing each bad field (for example `{"field": "TransactionAmt", "message": "Input should be greater than 0"}`).
 - **Model loading:** the API loads the `champion` alias from the MLflow registry at startup, and hot-swaps it on reload. In-flight requests finish on the old model.
-- **Reason codes:** the top 3 features pushing the score up, from an exact decision-path attribution (Saabas). The contributions sum to the model's raw log-odds output, which is verified in tests. Exact TreeSHAP took about 47 ms per request on 3,000 trees; this takes about 2 ms. Global explanations use exact TreeSHAP.
+- **Reason codes:** the top 3 features pushing the score up, from an exact decision-path attribution (Saabas). The contributions sum to the model's raw log-odds output, which is verified in tests. Measured on the 1,472-tree sample model, exact TreeSHAP took 47 ms p50 per request and this attribution 2.1 ms. On the served 2,997-tree model, predict + calibration + reason codes cost 3.3 ms p50. Global explanations use exact TreeSHAP.
 - **Logging:** structured JSON logs. Each prediction (raw request, all 227 features, score, decision, version, latency) goes to a buffered parquet prediction log that feeds monitoring and retraining.
 
 ### Monitoring
@@ -191,7 +214,7 @@ Main Makefile targets: `data train evaluate serve warm simulate simulate-drift m
 - **Trigger:** the Prefect `drift-monitor` deployment runs every 5 minutes. When drift is over the threshold, at least 5,000 delayed labels have arrived, the 60-minute cooldown has passed and no other retrain is running, it runs `retrain-champion-challenger`. A weekly cron deployment retrains regardless of drift.
 - **Training set:** all labelled history plus the logged live traffic whose labels have arrived. Features are recomputed over the full timeline, so live rows see the same history the API saw.
 - **Fresh holdout:** the most recent 30% of the newly labelled rows. The challenger never trains on anything at or after the holdout start (tested).
-- **Challenger:** trained with the champion's hyperparameters in two stages, with recent live rows weighted ×3. Stage A early-stops, calibrates and sets thresholds on the most recent 15% of the training pool. Stage B refits on the full pool.
+- **Challenger:** trained with the champion's hyperparameters in two stages, with recent live rows weighted ×3 (in the demo: 573,405 training rows, 27,157 of them newly labelled live traffic; stage A stopped at 1,562 rounds). Stage A early-stops, calibrates and sets thresholds on the most recent 15% of the training pool. Stage B refits on the full pool.
 - **Gate:** promote only if the challenger's holdout PR-AUC is at least 0.005 above the champion's *and* the challenger's p95 model latency is within the 50 ms budget. On promotion: the `champion` alias moves (the old champion becomes `previous-champion`), the drift reference is replaced, and `POST /admin/reload` is called.
 - **Audit trail:** every run, promoted or rejected, is logged to the MLflow `fraud-retraining` experiment and to [`reports/retraining_log.md`](reports/retraining_log.md).
 
