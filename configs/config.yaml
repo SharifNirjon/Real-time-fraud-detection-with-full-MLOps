@@ -1,0 +1,54 @@
+# Main pipeline configuration. Paths are relative to the repo root.
+seed: 42
+
+paths:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  reports_dir: reports
+  artifacts_dir: artifacts
+  prediction_log_dir: data/predictions
+  label_log_dir: data/labels
+  reference_dir: data/reference
+
+data:
+  # Human-readable dates only. TransactionDT is seconds from an undisclosed
+  # reference; the community consensus is 2017-11-30. Used for display only.
+  reference_date: "2017-11-30"
+  sample_frac: 0.20 # --sample keeps all transactions of ~20% of card1 values
+
+split:
+  train_frac: 0.70
+  valid_frac: 0.15 # remaining 0.15 is test
+  live_frac_of_test: 0.50 # last 50% of TEST is replayed as the live stream
+
+cost:
+  # cost(missed fraud) = transaction amount
+  review_cost: 5.0 # every manually reviewed transaction costs analyst time
+  false_decline_cost: 25.0 # blocking a legitimate customer (lost margin + churn)
+  review_catch_rate: 1.0 # share of reviewed frauds that analysts stop
+
+train:
+  experiment_name: fraud-detection
+  registered_model_name: fraud-detector
+  optuna_trials: 30
+  optuna_trials_sample: 15
+  num_boost_round: 3000
+  early_stopping_rounds: 100
+  learning_rate: 0.05
+  shap_sample: 5000
+
+serve:
+  latency_budget_ms: 50
+
+monitor:
+  reference_rows: 20000
+  current_window_rows: 5000 # most recent predictions compared with reference
+  drift_share_threshold: 0.30 # share of drifted monitored columns that triggers retraining
+  prediction_drift_threshold: 0.10 # Wasserstein (normed) on the fraud score
+  label_delay_hours: 48 # simulator reveals ground truth after this many simulated hours
+
+retrain:
+  min_pr_auc_gain: 0.005 # challenger must beat champion PR-AUC by at least this
+  holdout_frac: 0.30 # most recent share of newly labelled live data used as fresh holdout
+  recent_weight: 3.0 # sample weight of newly labelled live rows in challenger training
+  latency_rows: 500
