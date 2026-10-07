@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -110,7 +111,7 @@ class Scorer:
                 "score": proba,
                 "decision": decision,
                 "latency_ms": latency_ms,
-                "raw": pd.Series(txn).to_json(),
+                "raw": json.dumps(txn, default=float),
             }
             rec |= dict(zip(model.bundle.feature_names, X[0].tolist(), strict=True))
             log_records.append(rec)

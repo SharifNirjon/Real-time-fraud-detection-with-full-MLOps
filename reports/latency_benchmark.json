@@ -1,0 +1,50 @@
+[
+  {
+    "requests": 2000,
+    "concurrency": 1,
+    "errors": 0,
+    "throughput_rps": 37.8,
+    "client_latency_ms": {
+      "p50": 24.6,
+      "p95": 35.67,
+      "p99": 41.57
+    },
+    "server_latency_ms": {
+      "p50": 18.98,
+      "p95": 29.12,
+      "p99": 34.34
+    }
+  },
+  {
+    "requests": 2000,
+    "concurrency": 4,
+    "errors": 0,
+    "throughput_rps": 39.9,
+    "client_latency_ms": {
+      "p50": 97.59,
+      "p95": 125.22,
+      "p99": 141.76
+    },
+    "server_latency_ms": {
+      "p50": 22.42,
+      "p95": 31.0,
+      "p99": 36.94
+    }
+  },
+  {
+    "requests": 2000,
+    "concurrency": 8,
+    "errors": 0,
+    "throughput_rps": 39.6,
+    "client_latency_ms": {
+      "p50": 198.23,
+      "p95": 240.74,
+      "p99": 271.47
+    },
+    "server_latency_ms": {
+      "p50": 22.43,
+      "p95": 31.33,
+      "p99": 34.98
+    }
+  }
+]

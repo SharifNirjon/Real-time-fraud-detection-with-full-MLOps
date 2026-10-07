@@ -125,10 +125,19 @@ def run_drift_check(
     share = len(drifted) / max(len(per_col), 1)
 
     labels = read_log(label_dir)
-    perf = live_performance(cur, labels) if not labels.empty else {"labelled_rows": 0}
-    # performance over everything labelled so far (more stable than the window)
+    # Labels arrive late, so the drift window is (almost) never labelled. Live
+    # performance uses the most recent `performance_window_rows` LABELLED predictions.
     all_preds = recent_predictions(pred_dir, 10**9)
-    perf_all = live_performance(all_preds, labels) if not labels.empty else {"labelled_rows": 0}
+    if labels.empty:
+        perf: dict[str, Any] = {"labelled_rows": 0}
+        perf_all: dict[str, Any] = {"labelled_rows": 0}
+    else:
+        labelled_ids = set(labels["TransactionID"])
+        recent_lab = all_preds[all_preds["TransactionID"].isin(labelled_ids)].tail(
+            cfg["performance_window_rows"]
+        )
+        perf = live_performance(recent_lab, labels)
+        perf_all = live_performance(all_preds, labels)
 
     summary |= {
         "status": "ok",

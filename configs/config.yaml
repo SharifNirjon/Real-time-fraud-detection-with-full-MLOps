@@ -44,6 +44,7 @@ serve:
 monitor:
   reference_rows: 20000
   current_window_rows: 5000 # most recent predictions compared with reference
+  performance_window_rows: 10000 # most recent LABELLED predictions for live PR-AUC / recall
   drift_share_threshold: 0.30 # share of drifted monitored columns that triggers retraining
   prediction_drift_threshold: 0.10 # Wasserstein (normed) on the fraud score
   label_delay_hours: 48 # simulator reveals ground truth after this many simulated hours

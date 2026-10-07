@@ -10,11 +10,13 @@ Env:
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import logging
 import os
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -121,9 +123,14 @@ def create_app(
     def scorer(request: Request) -> Scorer:
         return request.app.state.scorer
 
-    def _score(s: Scorer, txns: list[dict[str, Any]], endpoint: str) -> list[dict[str, Any]]:
+    # All scoring runs on ONE dedicated thread: requests are served FIFO, the
+    # read -> score -> write on the feature state stays ordered, and CPU-bound
+    # work does not thrash the GIL across threadpool threads.
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="scorer")
+
+    async def _score(s: Scorer, txns: list[dict[str, Any]], endpoint: str) -> list[dict[str, Any]]:
         try:
-            out = s.score(txns)
+            out = await asyncio.get_running_loop().run_in_executor(executor, s.score, txns)
         except Exception as e:
             m.ERRORS.labels(type=type(e).__name__).inc()
             m.REQUESTS.labels(endpoint=endpoint, status="500").inc()
@@ -133,13 +140,13 @@ def create_app(
         return out
 
     @app.post("/score", response_model=ScoreResponse)
-    def score(txn: Transaction, s: Scorer = Depends(scorer)) -> dict[str, Any]:  # type: ignore[valid-type]
-        return _score(s, [txn.model_dump()], "/score")[0]
+    async def score(txn: Transaction, s: Scorer = Depends(scorer)) -> dict[str, Any]:  # type: ignore[valid-type]
+        return (await _score(s, [txn.model_dump()], "/score"))[0]
 
     @app.post("/score/batch", response_model=BatchResponse)
-    def score_batch(req: BatchRequest, s: Scorer = Depends(scorer)) -> dict[str, Any]:
+    async def score_batch(req: BatchRequest, s: Scorer = Depends(scorer)) -> dict[str, Any]:
         t0 = time.perf_counter()
-        results = _score(s, [t.model_dump() for t in req.transactions], "/score/batch")
+        results = await _score(s, [t.model_dump() for t in req.transactions], "/score/batch")
         return {"results": results, "latency_ms": round((time.perf_counter() - t0) * 1000, 3)}
 
     @app.post("/labels")
