@@ -87,7 +87,12 @@ def run_drift_check(
     window = window or cfg["current_window_rows"]
 
     ref, meta = load_reference()
-    cur = recent_predictions(pred_dir, window)
+    # compare like with like: only predictions made by the model the reference belongs to
+    # (feature encodings differ between model versions)
+    cur = recent_predictions(pred_dir, 10**9)
+    if not cur.empty and meta.get("model_version") not in (None, "local"):
+        cur = cur[cur["model_version"].astype(str) == str(meta["model_version"])]
+    cur = cur.tail(window)
     ts = pd.Timestamp.now(tz="UTC").strftime("%Y%m%dT%H%M%S")
     summary: dict[str, Any] = {
         "generated_at": ts,

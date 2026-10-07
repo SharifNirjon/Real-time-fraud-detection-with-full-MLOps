@@ -201,12 +201,23 @@ def train_challenger(
     challenger.metadata["latency_ms"] = challenger.latency_ms(
         challenger.matrix(holdout), rc["latency_rows"]
     )
-    ref_n = min(cfg["monitor"]["reference_rows"], len(recent))
-    ref_idx = np.sort(np.random.default_rng(cfg["seed"]).choice(len(recent), ref_n, replace=False))
-    ref = pd.DataFrame(pipe.transform_numpy(recent.iloc[ref_idx]), columns=pipe.feature_names)
-    ref["score"] = cal_r[ref_idx]
-    ref["isFraud"] = recent["isFraud"].to_numpy()[ref_idx]
+    ref = holdout_reference(challenger, holdout, cfg)
     return challenger, {"holdout": holdout}, ref
+
+
+def holdout_reference(
+    bundle: ModelBundle, holdout: pd.DataFrame, cfg: dict[str, Any]
+) -> pd.DataFrame:
+    """Drift reference after a promotion: the fresh holdout (most recent traffic, out-of-sample
+    for the challenger), as the challenger's feature vectors and calibrated scores."""
+    n = min(cfg["monitor"]["reference_rows"], len(holdout))
+    idx = np.sort(np.random.default_rng(cfg["seed"]).choice(len(holdout), n, replace=False))
+    rows = holdout.iloc[idx]
+    X = bundle.matrix(rows)
+    ref = pd.DataFrame(X, columns=bundle.feature_names)
+    ref["score"] = bundle.predict_proba(X)
+    ref["isFraud"] = rows["isFraud"].to_numpy()
+    return ref
 
 
 def append_retraining_log(entry: dict[str, Any]) -> Path:

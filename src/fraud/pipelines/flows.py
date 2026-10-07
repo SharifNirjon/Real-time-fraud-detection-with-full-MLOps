@@ -135,7 +135,7 @@ def register_and_decide(
                     "model_version": version,
                     "monitor_columns": challenger.metadata["monitor_columns"],
                     "test_pr_auc": metrics["challenger"]["pr_auc"],
-                    "source": "recent pre-holdout slice (out-of-sample stage-A scores)",
+                    "source": "challenger fresh holdout (most recent labelled traffic, out-of-sample)",
                 },
             )
             reload_status = R.reload_api()
