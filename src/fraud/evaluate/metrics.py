@@ -60,4 +60,7 @@ def calibration_metrics(y: np.ndarray, p: np.ndarray, n_bins: int = 10) -> dict:
         if m.any():
             mean_pred.append(float(p[m].mean()))
             frac_pos.append(float(y[m].mean()))
-    return {"brier": float(brier_score_loss(y, p)), "curve": {"mean_pred": mean_pred, "frac_pos": frac_pos}}
+    return {
+        "brier": float(brier_score_loss(y, p)),
+        "curve": {"mean_pred": mean_pred, "frac_pos": frac_pos},
+    }
