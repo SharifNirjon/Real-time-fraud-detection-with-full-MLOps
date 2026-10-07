@@ -165,19 +165,43 @@ def register_and_decide(
 @flow(name="retrain-champion-challenger")
 def retrain_flow(trigger: str = "manual", drift: dict[str, Any] | None = None) -> dict[str, Any]:
     logger = get_run_logger()
-    champion, champion_version = load_champion()
-    feats, is_live = rebuild_training_set()
-    challenger, info, ref = train_challenger(feats, is_live, champion)
-    metrics = evaluate(champion, challenger, info["holdout"])
-    entry = register_and_decide(
-        champion, champion_version, challenger, ref, info["holdout"], metrics, trigger, drift
+    lock = _lock_path()
+    lock.write_text(
+        json.dumps({"started_at": pd.Timestamp.now(tz="UTC").isoformat(), "trigger": trigger})
     )
+    try:
+        champion, champion_version = load_champion()
+        feats, is_live = rebuild_training_set()
+        challenger, info, ref = train_challenger(feats, is_live, champion)
+        metrics = evaluate(champion, challenger, info["holdout"])
+        entry = register_and_decide(
+            champion, champion_version, challenger, ref, info["holdout"], metrics, trigger, drift
+        )
+    finally:
+        lock.unlink(missing_ok=True)
     logger.info("retraining %s: %s", entry["decision"], entry["reason"])
     return entry
 
 
+LOCK_STALE = pd.Timedelta(hours=3)
+
+
+def _lock_path() -> Path:
+    return path("reports_dir") / "retraining_in_progress.json"
+
+
+def retrain_running() -> bool:
+    p = _lock_path()
+    if not p.exists():
+        return False
+    started = pd.Timestamp(json.loads(p.read_text())["started_at"])
+    return pd.Timestamp.now(tz="UTC") - started < LOCK_STALE  # a crashed run never blocks forever
+
+
 def retrain_allowed(summary: dict[str, Any]) -> tuple[bool, str]:
     rc = load_config()["retrain"]
+    if retrain_running():
+        return False, "a retraining run is already in progress"
     labelled = int((summary.get("cumulative") or {}).get("labelled_rows", 0))
     if labelled < rc["min_labelled_rows"]:
         return (

@@ -10,7 +10,8 @@ export ADMIN_API_KEY ?= change-me-local-dev-key
 export MLFLOW_DISABLE_AGENT_HINT = 1
 COMPOSE ?= docker compose
 
-.PHONY: help venv data features train evaluate serve warm simulate simulate-drift monitor retrain \
+
+.PHONY: perms help venv data features train evaluate serve warm simulate simulate-drift monitor retrain \
         test lint format bench up down logs all demo clean
 
 help:
@@ -28,7 +29,7 @@ features:                   ## V-column selection on train + offline features
 	$(PY) -m fraud.features.select
 	$(PY) -m fraud.features.build
 
-train: features             ## baselines + LightGBM + calibration + thresholds + MLflow registry
+train: features perms       ## baselines + LightGBM + calibration + thresholds + MLflow registry
 	$(PY) -m fraud.train.train $(SAMPLE) $(if $(TRIALS),--trials $(TRIALS),)
 
 evaluate:                   ## re-generate reports/ from saved scores
@@ -46,10 +47,10 @@ simulate: warm              ## replay the live stream (normal traffic)
 simulate-drift: warm        ## replay the live stream with injected amount/device drift
 	$(PY) scripts/simulate.py --api-url $(API_URL) --drift $(SIMARGS)
 
-monitor:                    ## Evidently drift + live performance report (retrains if drift)
+monitor: perms              ## Evidently drift + live performance report (retrains if drift)
 	API_URL=$(API_URL) $(PY) -m fraud.pipelines.flows monitor $(MONITORARGS)
 
-retrain:                    ## champion/challenger retraining flow
+retrain: perms              ## champion/challenger retraining flow
 	API_URL=$(API_URL) $(PY) -m fraud.pipelines.flows retrain --trigger manual
 
 test:
@@ -64,9 +65,11 @@ format:
 bench:                      ## async load test: 2,000 requests
 	$(PY) scripts/benchmark_latency.py --api-url $(API_URL) --requests 2000
 
-up:                         ## build + start the full stack
-	mkdir -p data/predictions data/labels reports/drift artifacts mlflow_data
-	chmod -R a+rwX data/predictions data/labels reports artifacts mlflow_data
+perms:                      ## containers run as uid 10001: keep shared dirs writable for both sides
+	mkdir -p data/predictions data/labels data/reference reports/drift artifacts mlflow_data
+	chmod -R a+rwX data/predictions data/labels data/reference reports artifacts mlflow_data
+
+up: perms                   ## build + start the full stack
 	$(COMPOSE) up -d --build
 	@echo "API http://localhost:8000/docs  MLflow http://localhost:5000  Grafana http://localhost:3000  Prometheus http://localhost:9090  Prefect http://localhost:4200"
 

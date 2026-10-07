@@ -47,10 +47,14 @@ def main() -> None:
         "feature_cells_compared": int(close.size),
         "mismatched_cells": int((~close).sum()),
         "mismatch_rate": float((~close).mean()),
-        "features_with_mismatch": {bundle.feature_names[i]: int(c) for i, c in enumerate(per_feature) if c},
+        "features_with_mismatch": {
+            bundle.feature_names[i]: int(c) for i, c in enumerate(per_feature) if c
+        },
         "max_abs_score_diff": float(s_diff.max()),
         "p99_abs_score_diff": float(np.percentile(s_diff, 99)),
-        "decision_agreement": float(np.mean(np.array(bundle.decide(s_off)) == log["decision"].to_numpy())),
+        "decision_agreement": float(
+            np.mean(np.array(bundle.decide(s_off)) == log["decision"].to_numpy())
+        ),
     }
     Path(args.out).write_text(json.dumps(res, indent=2))
     print(json.dumps(res, indent=2))

@@ -17,3 +17,4 @@ mlartifacts/
 .env
 *.egg-info/
 mlflow_data/
+reports/retraining_in_progress.json
