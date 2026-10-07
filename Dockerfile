@@ -17,6 +17,7 @@ RUN apt-get update \
 
 # ---------- builders: dependencies into an isolated venv ----------
 FROM base AS build-serve
+RUN apt-get update && apt-get install -y --no-install-recommends binutils && rm -rf /var/lib/apt/lists/*
 RUN python -m venv /opt/venv
 COPY requirements/serve.txt /tmp/requirements.txt
 # optional build secret "extra_ca": corporate / proxy CA bundle (no-op when absent)
@@ -24,8 +25,10 @@ RUN --mount=type=secret,id=extra_ca \
     if [ -s /run/secrets/extra_ca ]; then export PIP_CERT=/run/secrets/extra_ca; fi \
     && /opt/venv/bin/pip install -r /tmp/requirements.txt \
     && find /opt/venv -name "__pycache__" -prune -exec rm -rf {} + \
-    && rm -rf /opt/venv/lib/python3.11/site-packages/pyarrow/include \
-              /opt/venv/lib/python3.11/site-packages/*/tests
+    && /opt/venv/bin/pip uninstall -y pip setuptools \
+    && cd /opt/venv/lib/python3.11/site-packages \
+    && rm -rf pyarrow/include pyarrow/tests pandas/tests numpy/*/tests scipy/*/tests \
+    && find . -name "*.so*" -type f -not -path "*.libs/*" -exec strip --strip-unneeded {} + 2>/dev/null; true
 
 FROM base AS build-pipelines
 RUN python -m venv /opt/venv
