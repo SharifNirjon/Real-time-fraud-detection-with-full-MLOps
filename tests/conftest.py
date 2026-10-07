@@ -11,3 +11,10 @@ from fixtures.synthetic import make_transactions  # noqa: E402
 @pytest.fixture(scope="session")
 def transactions():
     return make_transactions(3000, seed=0)
+
+
+@pytest.fixture(scope="session")
+def bundle(transactions):
+    from fixtures.model import make_bundle
+
+    return make_bundle(transactions.iloc[:2000])

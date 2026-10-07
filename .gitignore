@@ -16,3 +16,4 @@ mlflow.db
 mlartifacts/
 .env
 *.egg-info/
+mlflow_data/

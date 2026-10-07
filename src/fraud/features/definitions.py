@@ -10,6 +10,8 @@ current transaction is never included.
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 import numpy as np
 import pandas as pd
 
@@ -32,10 +34,9 @@ def raw_aggregate_names() -> list[str]:
     return names
 
 
-def _key_part(s: pd.Series) -> pd.Series:
-    v = pd.to_numeric(s, errors="coerce").astype("float64")
-    out = v.round().astype("Int64").astype(str)
-    return out.where(v.notna(), "na")
+def _key_part(s: pd.Series) -> list[str]:
+    v = pd.to_numeric(s, errors="coerce").to_numpy(dtype="float64")
+    return ["na" if x != x else str(int(round(x))) for x in v.tolist()]
 
 
 def add_base_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -45,25 +46,31 @@ def add_base_features(df: pd.DataFrame) -> pd.DataFrame:
     (day - D1, where D1 is "days since card first seen"). Different people
     can collide and one person can split across uids.
     """
-    out = df.copy()
-    dt = out["TransactionDT"].astype("int64")
+    dt = df["TransactionDT"].astype("int64")
     day = dt // SECONDS_PER_DAY
-    amt = out["TransactionAmt"].astype("float64")
-    start_day = pd.Series(day, index=out.index) - pd.to_numeric(out["D1"]).astype("float64")
-    out["uid"] = (
-        _key_part(out["card1"])
-        + "_"
-        + _key_part(out["addr1"])
-        + "_"
-        + _key_part(np.floor(start_day))
+    amt = df["TransactionAmt"].astype("float64")
+    start_day = day - pd.to_numeric(df["D1"]).astype("float64")
+    p, r = df["P_emaildomain"], df["R_emaildomain"]
+    new = pd.DataFrame(
+        {
+            "uid": [
+                f"{a}_{b}_{c}"
+                for a, b, c in zip(
+                    _key_part(df["card1"]),
+                    _key_part(df["addr1"]),
+                    _key_part(np.floor(start_day)),
+                    strict=True,
+                )
+            ],
+            "hour": ((dt // 3600) % 24).astype("float32"),
+            "dow": (day % 7).astype("float32"),
+            "log_amt": np.log1p(amt),
+            "amt_cents": ((amt - np.floor(amt)) * 100).round(2),
+            "email_match": np.where(p.isna() | r.isna(), np.nan, (p == r).astype(float)),
+        },
+        index=df.index,
     )
-    out["hour"] = ((dt // 3600) % 24).astype("float32")
-    out["dow"] = (day % 7).astype("float32")
-    out["log_amt"] = np.log1p(amt)
-    out["amt_cents"] = ((amt - np.floor(amt)) * 100).round(2)
-    p, r = out["P_emaildomain"], out["R_emaildomain"]
-    out["email_match"] = np.where(p.isna() | r.isna(), np.nan, (p == r).astype(float))
-    return out
+    return pd.concat([df.drop(columns=[c for c in new.columns if c in df.columns]), new], axis=1)
 
 
 def derive(df: pd.DataFrame, agg: pd.DataFrame) -> pd.DataFrame:
@@ -99,7 +106,8 @@ def derive(df: pd.DataFrame, agg: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(f, index=df.index)
 
 
-def engineered_names() -> list[str]:
+@lru_cache(maxsize=1)
+def engineered_names() -> tuple[str, ...]:
     base = ["hour", "dow", "log_amt", "amt_cents", "email_match"]
     dummy = pd.DataFrame(
         {
@@ -110,4 +118,4 @@ def engineered_names() -> list[str]:
         }
     )
     agg = pd.DataFrame({n: [np.nan] for n in raw_aggregate_names()})
-    return base + list(derive(dummy, agg).columns)
+    return tuple(base + list(derive(dummy, agg).columns))

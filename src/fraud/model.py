@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from fraud.evaluate.cost import DECISION_NAMES, Thresholds, decide
+from fraud.explain import PathExplainer
 from fraud.features.pipeline import FeaturePipeline
 
 
@@ -52,13 +53,18 @@ class ModelBundle:
     calibrator: IsotonicCalibrator
     thresholds: Thresholds
     metadata: dict[str, Any] = field(default_factory=dict)
+    explainer: PathExplainer | None = None
+
+    def __post_init__(self) -> None:
+        if self.explainer is None:
+            self.explainer = PathExplainer.from_booster(self.booster)
 
     @property
     def feature_names(self) -> list[str]:
         return self.pipeline.feature_names
 
     def matrix(self, feats: pd.DataFrame) -> np.ndarray:
-        return self.pipeline.to_numpy(self.pipeline.transform(feats))
+        return self.pipeline.transform_numpy(feats)
 
     def predict_raw(self, X: np.ndarray) -> np.ndarray:
         return self.booster.predict(X, num_threads=1)
@@ -70,20 +76,23 @@ class ModelBundle:
         return [DECISION_NAMES[int(d)] for d in decide(proba, self.thresholds)]
 
     def reason_codes(self, X: np.ndarray, k: int = 3) -> list[list[dict[str, Any]]]:
-        """Top-k features pushing the score UP (TreeSHAP contributions, log-odds)."""
-        contrib = self.booster.predict(X, pred_contrib=True, num_threads=1)[:, :-1]
+        """Top-k features pushing the score UP (decision-path attribution, log-odds)."""
+        if getattr(self, "explainer", None) is None:  # bundles pickled before the explainer existed
+            self.explainer = PathExplainer.from_booster(self.booster)
+        assert self.explainer is not None
         out = []
-        for row_x, row_c in zip(X, contrib, strict=True):
-            top = np.argsort(-row_c)[:k]
+        for row_x in X:
+            contrib, _ = self.explainer.contributions(row_x)
+            top = np.argsort(-contrib)[:k]
             out.append(
                 [
                     {
                         "feature": self.feature_names[i],
                         "value": None if np.isnan(row_x[i]) else float(row_x[i]),
-                        "contribution": round(float(row_c[i]), 4),
+                        "contribution": round(float(contrib[i]), 4),
                     }
                     for i in top
-                    if row_c[i] > 0
+                    if contrib[i] > 0
                 ]
             )
         return out
