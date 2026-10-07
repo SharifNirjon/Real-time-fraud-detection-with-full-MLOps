@@ -176,6 +176,6 @@ def load_bundle(alias: str = CHAMPION) -> tuple[ModelBundle, str]:
         local = mlflow.artifacts.download_artifacts(
             artifact_uri=f"models:/{model_name()}/{mv.version}", dst_path=tmp
         )
-        bundle_file = next(Path(local).rglob("*.pkl"))
+        bundle_file = next(Path(local).rglob("model_bundle.pkl"))
         bundle = ModelBundle.load(bundle_file)
     return bundle, str(mv.version)
