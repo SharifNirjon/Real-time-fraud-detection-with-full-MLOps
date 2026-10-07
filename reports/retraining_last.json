@@ -1,0 +1,30 @@
+{
+  "run_at": "2026-10-07 05:03:28",
+  "trigger": "drift",
+  "champion_version": "1",
+  "challenger_version": "2",
+  "holdout_rows": 11639,
+  "holdout_frauds": 449,
+  "champion_pr_auc": 0.4879891685515169,
+  "challenger_pr_auc": 0.669881471659249,
+  "challenger_latency_p95_ms": 3.7470256486813005,
+  "decision": "PROMOTED",
+  "reason": "PR-AUC gain +0.1819 >= +0.0050 (challenger 0.6699 vs champion 0.4880), latency p95 3.7ms within budget",
+  "api_reload": "200 {\"previous_version\":\"1\",\"model_version\":\"2\"}",
+  "metrics": {
+    "champion": {
+      "pr_auc": 0.4879891685515169,
+      "roc_auc": 0.8828764546773588,
+      "recall_at_1pct_fpr": 0.41202672605790647,
+      "precision_at_80pct_recall": 0.12320328542094455,
+      "cost": 53721.56
+    },
+    "challenger": {
+      "pr_auc": 0.669881471659249,
+      "roc_auc": 0.9468938023330566,
+      "recall_at_1pct_fpr": 0.5991091314031181,
+      "precision_at_80pct_recall": 0.29541734860883795,
+      "cost": 42177.020000000004
+    }
+  }
+}

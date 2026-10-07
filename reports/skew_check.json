@@ -1,0 +1,13 @@
+{
+  "rows": 44292,
+  "feature_cells_compared": 10054284,
+  "mismatched_cells": 171,
+  "mismatch_rate": 1.7007675534130525e-05,
+  "features_with_mismatch": {
+    "uid_amt_std_prev": 113,
+    "uid_amt_zscore": 58
+  },
+  "max_abs_score_diff": 0.012008704766950165,
+  "p99_abs_score_diff": 0.0,
+  "decision_agreement": 0.9999548451187573
+}

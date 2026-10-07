@@ -1,0 +1,9 @@
+-r serve.in
+scikit-learn==1.9.1
+optuna==5.0.0
+shap==0.51.0
+matplotlib==3.11.2
+mlflow==3.16.1
+evidently==0.7.23
+prefect==3.8.8
+sqlalchemy==2.0.54 # prefect 3.8 scheduler breaks on SQLAlchemy 2.1 (bulk DML error)

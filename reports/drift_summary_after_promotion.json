@@ -1,0 +1,75 @@
+{
+  "generated_at": "20261007T052224",
+  "reference_model_version": "2",
+  "status": "ok",
+  "current_rows": 5000,
+  "current_dt_range": [
+    15650549,
+    15811131
+  ],
+  "current_model_versions": [
+    "2"
+  ],
+  "n_monitored_columns": 26,
+  "share_drifted_columns": 0.11538461538461539,
+  "drifted_columns": [
+    "V188",
+    "TransactionAmt",
+    "log_amt"
+  ],
+  "column_drift_scores": {
+    "card1_te": 0.02004497434391431,
+    "C14": 0.034469682712962565,
+    "C1": 0.03918636284885783,
+    "V242": 0.0469908799603766,
+    "C13": 0.023171297782168945,
+    "card1_freq": 0.035513602635686384,
+    "V188": 0.26793100433668854,
+    "C8": 0.04633709157775786,
+    "card1_n_prev": 0.0335395825255022,
+    "TransactionAmt": 0.11654515804601351,
+    "addr1": 0.01670656815960552,
+    "DeviceInfo_te": 0.021777858884302406,
+    "C11": 0.04242043445611679,
+    "addr1_freq": 0.0232064743781049,
+    "card1": 0.015785633523323343,
+    "card2": 0.017544099089563045,
+    "D2": 0.024162066021861734,
+    "card1_amt_7d": 0.0514338683284085,
+    "C4": 0.04924978883913902,
+    "D15": 0.01479053566522269,
+    "log_amt": 0.11366430084228003,
+    "DeviceInfo_freq": 0.004178062177514366,
+    "DeviceType_map": 0.021495284519338857,
+    "uid_device_is_new": 0.02830519819871594,
+    "P_emaildomain_freq": 0.011546924049618162,
+    "hour": 0.06561494196682938
+  },
+  "prediction_drift_score": 0.02104593345487775,
+  "mean_score_reference": 0.028070406985167794,
+  "mean_score_current": 0.02618160304683668,
+  "drift_detected": false,
+  "thresholds": {
+    "drift_share": 0.3,
+    "prediction_drift": 0.1,
+    "column_drift": 0.1
+  },
+  "reference_test_pr_auc": 0.669881471659249,
+  "report_html": "reports/drift/drift_report_20261007T052224.html",
+  "labelled_rows": 10000,
+  "live_frauds": 394,
+  "live_pr_auc": 0.6657290215004944,
+  "live_roc_auc": 0.9465763254987629,
+  "live_recall": 0.8426395939086294,
+  "live_precision": 0.2434017595307918,
+  "live_fraud_rate": 0.0394,
+  "cumulative": {
+    "labelled_rows": 38796,
+    "live_frauds": 1492,
+    "live_pr_auc": 0.923743614694371,
+    "live_roc_auc": 0.9867952728369302,
+    "live_recall": 0.9524128686327078,
+    "live_precision": 0.3335680751173709,
+    "live_fraud_rate": 0.0384575729456645
+  }
+}
