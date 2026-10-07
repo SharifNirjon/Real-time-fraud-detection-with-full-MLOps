@@ -1,8 +1,7 @@
 # syntax=docker/dockerfile:1
 # Multi-stage build. Targets:
 #   serve      - FastAPI scoring service (slim: no sklearn/optuna/shap/prefect)
-#   pipelines  - training, monitoring and Prefect flows
-#   mlflow     - MLflow tracking server (same version as the client libraries)
+#   pipelines  - training, monitoring, Prefect flows and the MLflow server (same MLflow version as clients)
 ARG PYTHON_IMAGE=python:3.11-slim-bookworm
 
 FROM ${PYTHON_IMAGE} AS base
@@ -38,11 +37,6 @@ RUN --mount=type=secret,id=extra_ca \
     && /opt/venv/bin/pip install -r /tmp/requirements.txt \
     && find /opt/venv -name "__pycache__" -prune -exec rm -rf {} +
 
-FROM base AS build-mlflow
-RUN --mount=type=secret,id=extra_ca \
-    if [ -s /run/secrets/extra_ca ]; then export PIP_CERT=/run/secrets/extra_ca; fi \
-    && python -m venv /opt/venv && /opt/venv/bin/pip install "mlflow==3.16.1"
-
 # ---------- runtime images ----------
 FROM base AS serve
 COPY --from=build-serve /opt/venv /opt/venv
@@ -66,13 +60,3 @@ ENV PATH=/opt/venv/bin:$PATH PYTHONPATH=/app/src FRAUD_ROOT=/app MLFLOW_DISABLE_
     MPLCONFIGDIR=/tmp/matplotlib
 USER app
 CMD ["python", "-m", "fraud.pipelines.serve_flows"]
-
-FROM base AS mlflow
-COPY --from=build-mlflow /opt/venv /opt/venv
-ENV PATH=/opt/venv/bin:$PATH MLFLOW_DISABLE_AGENT_HINT=1
-USER app
-EXPOSE 5000
-CMD ["mlflow", "server", "--backend-store-uri", "sqlite:////mlflow/mlflow.db", \
-     "--artifacts-destination", "/mlflow/artifacts", "--serve-artifacts", \
-     "--host", "0.0.0.0", "--port", "5000", "--workers", "2", \
-     "--allowed-hosts", "mlflow,mlflow:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000"]

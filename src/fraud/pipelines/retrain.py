@@ -137,7 +137,7 @@ def train_challenger(
     cost = CostParams.from_config(cfg)
     labelled = feats["isFraud"].notna()
     live_lab = feats[is_live & labelled]
-    if len(live_lab) < 1000 or live_lab["isFraud"].sum() < 20:
+    if len(live_lab) < 200 or live_lab["isFraud"].sum() < 10:
         raise RuntimeError(f"not enough newly labelled data ({len(live_lab)} rows)")
     holdout_start = int(live_lab["TransactionDT"].quantile(1 - rc["holdout_frac"]))
     holdout = live_lab[live_lab["TransactionDT"] >= holdout_start]

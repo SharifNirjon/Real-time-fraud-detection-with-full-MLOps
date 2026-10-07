@@ -53,3 +53,5 @@ retrain:
   holdout_frac: 0.30 # most recent share of newly labelled live data used as fresh holdout
   recent_weight: 3.0 # sample weight of newly labelled live rows in challenger training
   latency_rows: 500
+  min_labelled_rows: 5000 # drift alone is not enough: wait for delayed labels before retraining
+  cooldown_minutes: 60 # at most one drift-triggered retraining per hour

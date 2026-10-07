@@ -176,6 +176,26 @@ def retrain_flow(trigger: str = "manual", drift: dict[str, Any] | None = None) -
     return entry
 
 
+def retrain_allowed(summary: dict[str, Any]) -> tuple[bool, str]:
+    rc = load_config()["retrain"]
+    labelled = int((summary.get("cumulative") or {}).get("labelled_rows", 0))
+    if labelled < rc["min_labelled_rows"]:
+        return (
+            False,
+            f"only {labelled} labelled live rows (< {rc['min_labelled_rows']}); waiting for labels",
+        )
+    last = path("reports_dir") / "retraining_last.json"
+    if last.exists():
+        prev = json.loads(last.read_text())
+        age = pd.Timestamp.now(tz="UTC") - pd.Timestamp(prev["run_at"], tz="UTC")
+        if age < pd.Timedelta(minutes=rc["cooldown_minutes"]):
+            return (
+                False,
+                f"last retraining {age.total_seconds() / 60:.0f} min ago (cooldown {rc['cooldown_minutes']} min)",
+            )
+    return True, "ok"
+
+
 @flow(name="drift-monitor")
 def monitor_flow(auto_retrain: bool = True) -> dict[str, Any]:
     logger = get_run_logger()
@@ -188,8 +208,13 @@ def monitor_flow(auto_retrain: bool = True) -> dict[str, Any]:
         summary.get("live_pr_auc"),
     )
     if auto_retrain and summary.get("drift_detected"):
-        logger.info("drift over threshold -> triggering retraining")
-        summary["retraining"] = retrain_flow(trigger="drift", drift=summary)
+        ok, why = retrain_allowed(summary)
+        if ok:
+            logger.info("drift over threshold -> triggering retraining")
+            summary["retraining"] = retrain_flow(trigger="drift", drift=summary)
+        else:
+            logger.info("drift detected but retraining skipped: %s", why)
+            summary["retraining"] = {"decision": "SKIPPED", "reason": why}
     return summary
 
 
