@@ -1,0 +1,12 @@
+numpy==2.4.6
+pandas==3.0.6
+pyarrow==25.0.1
+lightgbm==4.7.0
+pyyaml==6.0.3
+fastapi==0.142.2
+uvicorn[standard]==0.54.0
+pydantic==2.13.5
+redis==8.1.0
+prometheus-client==0.26.0
+httpx==0.28.1
+mlflow-skinny==3.16.1

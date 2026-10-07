@@ -24,6 +24,7 @@ from fraud.evaluate.cost import CostParams, Thresholds, optimize_thresholds
 from fraud.evaluate.report import DISPLAY, evaluate_all, write_reports
 from fraud.features.pipeline import FeaturePipeline
 from fraud.model import IsotonicCalibrator, ModelBundle
+from fraud.monitor.drift import write_reference
 from fraud.train import lgbm
 from fraud.train.baselines import RulesEngine, logistic_regression
 
@@ -237,7 +238,6 @@ def run(sample: bool, n_trials: int | None, use_mlflow: bool) -> dict[str, Any]:
     ref = pd.DataFrame(X_va[ref_idx], columns=names)
     ref["score"] = cal_va[ref_idx]
     ref["isFraud"] = y_va[ref_idx]
-    ref.to_parquet(path("reference_dir") / "reference.parquet", index=False)
 
     extra = {
         "training": {
@@ -263,6 +263,17 @@ def run(sample: bool, n_trials: int | None, use_mlflow: bool) -> dict[str, Any]:
 
         version = log_training_run(bundle, bundle_path, res, extra, names, cfg)
         log.info("registered model version %s", version)
+    else:
+        version = "local"
+    write_reference(
+        ref,
+        {
+            "model_version": version,
+            "monitor_columns": bundle.metadata["monitor_columns"],
+            "test_pr_auc": served["pr_auc"],
+            "source": "valid split sample (out-of-sample scores)",
+        },
+    )
     return res
 
 

@@ -1,0 +1,99 @@
+name: fraud
+
+x-env: &common-env
+  MLFLOW_TRACKING_URI: http://mlflow:5000
+  ADMIN_API_KEY: ${ADMIN_API_KEY:-change-me-local-dev-key}
+  REDIS_URL: redis://redis:6379/0
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "2gb"]
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  mlflow:
+    build: {context: ., target: mlflow}
+    image: fraud-mlflow:latest
+    ports: ["5000:5000"]
+    volumes:
+      - ./mlflow_data:/mlflow
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=2)"]
+      interval: 5s
+      retries: 30
+
+  api:
+    build: {context: ., target: serve}
+    image: fraud-api:latest
+    environment:
+      <<: *common-env
+      MODEL_ALIAS: champion
+      MODEL_PATH: /app/artifacts/model_bundle.pkl # fallback only if the registry is unreachable
+      PREDICTION_LOG_DIR: /app/data/predictions
+      LABEL_LOG_DIR: /app/data/labels
+      DRIFT_SUMMARY_PATH: /app/reports/drift/latest.json
+    ports: ["8000:8000"]
+    volumes:
+      - ./data/predictions:/app/data/predictions
+      - ./data/labels:/app/data/labels
+      - ./reports:/app/reports:ro
+      - ./artifacts:/app/artifacts:ro
+    depends_on:
+      redis: {condition: service_healthy}
+      mlflow: {condition: service_healthy}
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=7d"]
+    ports: ["9090:9090"]
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on: [api]
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/fraud_overview.json
+    ports: ["3000:3000"]
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on: [prometheus]
+
+  prefect-server:
+    build: {context: ., target: pipelines}
+    image: fraud-pipelines:latest
+    command: ["prefect", "server", "start", "--host", "0.0.0.0", "--port", "4200"]
+    environment:
+      PREFECT_HOME: /tmp/prefect
+      PREFECT_SERVER_ANALYTICS_ENABLED: "false"
+    ports: ["4200:4200"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health', timeout=2)"]
+      interval: 5s
+      retries: 30
+
+  prefect-worker:
+    image: fraud-pipelines:latest
+    command: ["python", "-m", "fraud.pipelines.serve_flows"]
+    environment:
+      <<: *common-env
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_HOME: /tmp/prefect
+      API_URL: http://api:8000
+      MONITOR_INTERVAL_MINUTES: ${MONITOR_INTERVAL_MINUTES:-5}
+    volumes:
+      - ./data:/app/data
+      - ./reports:/app/reports
+      - ./artifacts:/app/artifacts
+    depends_on:
+      prefect-server: {condition: service_healthy}
+      mlflow: {condition: service_healthy}
+      api: {condition: service_started}
